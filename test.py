@@ -1,8 +1,11 @@
 from tkinter import *
 import tkintermapview
+import requests
+from bs4 import BeautifulSoup
 
-
-schools:list = []
+schools = []
+teachers = []
+students = []
 
 class School:
     def __init__(self, name, location, map_widget):
@@ -15,154 +18,141 @@ class School:
             text=self.name
         )
 
-    def get_coordinates(self) -> list:
+    def get_coordinates(self):
         import requests
-        from bs4 import BeautifulSoup
 
-        address_url: str = f"https://pl.wikipedia.org/wiki/{self.location}"
-        response = requests.get(address_url).text
-        response_html = BeautifulSoup(response, "html.parser")
+        query = f"{self.name}, Siedlce, Polska"
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": query,
+            "format": "json"
+        }
 
-        longitude: float = float(response_html.select(".longitude")[1].text.replace(",", "."))
-        latitude: float = float(response_html.select(".latitude")[1].text.replace(",", "."))
-        return [latitude, longitude]
+        response = requests.get(url, params=params, headers={"User-Agent": "szkola-projekt"})
+        data = response.json()
+
+        if data:
+            lat = float(data[0]["lat"])
+            lon = float(data[0]["lon"])
+            return [lat, lon]
+        else:
+            print(f"❗ Nie znaleziono współrzędnych dla: {query}")
+            return [52.1676, 22.2900]  # awaryjna pozycja
+
+        response = requests.get(url, params=params, headers={"User-Agent": "szkola-projekt"})
+        data = response.json()
+
+class Teacher:
+    def __init__(self, name, surname, address, school):
+        self.name = name
+        self.surname = surname
+        self.address = address
+        self.school = school
+        self.coordinates = self.get_coordinates()
+
+
+class Student:
+    def __init__(self, name, surname, address, school, class_name):
+        self.name = name
+        self.surname = surname
+        self.address = address
+        self.school = school
+        self.class_name = class_name
+        self.coordinates = self.get_coordinates()
+
+
+# --- FUNKCJE ---
 
 def add_school():
     name = entry_name.get()
-    location = entry_location.get()
+    location = f"{name} w Siedlcach"
     new_school = School(name=name, location=location, map_widget=map_widget)
     schools.append(new_school)
-    listbox_lista_obiektow.insert(END, f"{len(schools)}. {new_school.name} ({new_school.location})")
+    listbox_schools.insert(END, f"{len(schools)}. {new_school.name} ({new_school.location})")
     entry_name.delete(0, END)
-    entry_location.delete(0, END)
-    entry_name.focus()
-
-    print(f"Dodano szkołę: {new_school.name}, {new_school.location}")
-
-def delete_school():
-    idx = listbox_lista_obiektow.index(ACTIVE)
-    schools[idx].marker.delete()
-    schools.pop(idx)
-    listbox_lista_obiektow.delete(idx)
-    label_name_szczegoly_obiektu_wartosc.config(text="....")
-    label_location_szczegoly_obiektu_wartosc.config(text="....")
-
 
 def show_school_details():
-    idx = listbox_lista_obiektow.index(ACTIVE)
+    idx = listbox_schools.index(ACTIVE)
     school = schools[idx]
-    label_name_szczegoly_obiektu_wartosc.config(text=school.name)
-    label_location_szczegoly_obiektu_wartosc.config(text=school.location)
     map_widget.set_position(school.coordinates[0], school.coordinates[1])
     map_widget.set_zoom(16)
 
-def edit_school():
-    idx = listbox_lista_obiektow.index(ACTIVE)
-    school = schools[idx]
-    entry_name.delete(0, END)
-    entry_name.insert(0, school.name)
-
-    entry_location.delete(0, END)
-    entry_location.insert(0, school.location)
-
-    button_dodaj_obiekt.config(text="Zapisz",command=lambda: update_school(idx))
-
-
-def update_school(idx):
-    name = entry_name.get()
-    location = entry_location.get()
-
+def delete_school():
+    idx = listbox_schools.index(ACTIVE)
     schools[idx].marker.delete()
+    schools.pop(idx)
+    listbox_schools.delete(idx)
 
-    schools[idx].name = name
-    schools[idx].location = location
-    schools[idx].coordinates = schools[idx].get_coordinates()
-    schools[idx].marker = map_widget.set_marker(
-        schools[idx].coordinates[0],
-        schools[idx].coordinates[1],
-        text=schools[idx].name
-    )
+def delete_student():
+    idx = listbox_students.index(ACTIVE)
+    students.pop(idx)
+    listbox_students.delete(idx)
 
-    button_dodaj_obiekt.config(text="Dodaj szkołę", command=add_school)
-    entry_name.delete(0, END)
-    entry_location.delete(0, END)
-    entry_name.focus()
+def delete_teacher():
+    idx = listbox_teachers.index(ACTIVE)
+    teachers.pop(idx)
+    listbox_teachers.delete(idx)
 
-    listbox_lista_obiektow.delete(idx)
-    listbox_lista_obiektow.insert(idx, f"{idx+1}. {name} ({location})")
+def add_example_teacher():
+    if schools:
+        teacher = Teacher("Anna", "Nowak", "Siedlce", schools[0])
+        teachers.append(teacher)
+        listbox_teachers.insert(END, f"{teacher.name} {teacher.surname} ({teacher.school.name})")
+        map_widget.set_marker(teacher.coordinates[0], teacher.coordinates[1], text=teacher.name)
+
+def add_example_student():
+    if schools:
+        student = Student("Jan", "Kowalski", "Siedlce", schools[0], "1A")
+        students.append(student)
+        listbox_students.insert(END, f"{student.name} {student.surname} ({student.class_name})")
+        map_widget.set_marker(student.coordinates[0], student.coordinates[1], text=student.name)
 
 
-
+# --- GUI ---
 root = Tk()
 root.title("System szkół")
-root.geometry("1024x768")
+root.geometry("1200x800")
 
-# RAMKI
-ramka_lista_obiektow = Frame(root)
-ramka_formularz = Frame(root)
-ramka_szczegoly_obiektow = Frame(root)
-ramka_mapa = Frame(root)
+frame_form = Frame(root)
+frame_form.grid(row=0, column=0, padx=10, pady=10, sticky=N)
 
-ramka_lista_obiektow.grid(row=0, column=0)
-ramka_formularz.grid(row=0, column=1)
-ramka_szczegoly_obiektow.grid(row=1, column=0)
-ramka_mapa.grid(row=2, column=0, columnspan=2)
+frame_lists = Frame(root)
+frame_lists.grid(row=0, column=1, columnspan=3, padx=10, pady=10)
 
-# RAMKA LISTA OBIEKTÓW
-label_lista_obiektow = Label(ramka_lista_obiektow, text="Lista szkół:")
-label_lista_obiektow.grid(row=0, column=0, columnspan=3)
-listbox_lista_obiektow = Listbox(ramka_lista_obiektow, width=50)
-listbox_lista_obiektow.grid(row=1, column=0, columnspan=3)
-
-button_pokaz_szczegoly = Button(ramka_lista_obiektow, text="Pokaż szczegóły", command=show_school_details)
-button_pokaz_szczegoly.grid(row=2, column=0, columnspan=3)
-button_edytuj = Button(ramka_lista_obiektow, text="Edytuj szkołę", command=edit_school)
-button_edytuj.grid(row=3, column=0, columnspan=3)
-button_usun = Button(ramka_lista_obiektow, text="Usuń szkołę", command=delete_school)
-button_usun.grid(row=4, column=0, columnspan=3)
-button_dodaj_obiekt = Button(ramka_formularz, text="Dodaj szkołę", command=add_school)
-button_dodaj_obiekt.grid(row=3, column=0, columnspan=2)
+frame_map = Frame(root)
+frame_map.grid(row=1, column=0, columnspan=4)
 
 # FORMULARZ
-label_formularz = Label(ramka_formularz, text="Dodaj szkołę:")
-label_formularz.grid(row=0, column=0, columnspan=2)
-
-label_name = Label(ramka_formularz, text="Nazwa szkoły:")
-label_name.grid(row=1, column=0, sticky=W)
-
-entry_name = Entry(ramka_formularz)
+Label(frame_form, text="Dodaj szkołę:").grid(row=0, column=0, columnspan=2)
+Label(frame_form, text="Nazwa szkoły:").grid(row=1, column=0, sticky=W)
+entry_name = Entry(frame_form)
 entry_name.grid(row=1, column=1)
+Button(frame_form, text="Dodaj szkołę", command=add_school).grid(row=3, column=0, columnspan=2, pady=5)
 
-label_location = Label(ramka_formularz, text="Miejscowość:")
-label_location.grid(row=2, column=0, sticky=W)
+# LISTA SZKÓŁ
+Label(frame_lists, text="Lista szkół:").grid(row=0, column=0)
+listbox_schools = Listbox(frame_lists, width=40)
+listbox_schools.grid(row=1, column=0)
+Button(frame_lists, text="Usuń szkołę", command=delete_school).grid(row=2, column=0, pady=2)
 
-entry_location = Entry(ramka_formularz)
-entry_location.grid(row=2, column=1)
+# LISTA UCZNIÓW
+Label(frame_lists, text="Lista uczniów:").grid(row=0, column=1)
+listbox_students = Listbox(frame_lists, width=40)
+listbox_students.grid(row=1, column=1)
+Button(frame_lists, text="Dodaj ucznia", command=add_example_student).grid(row=2, column=1)
+Button(frame_lists, text="Usuń ucznia", command=delete_student).grid(row=3, column=1, pady=2)
 
+# LISTA NAUCZYCIELI
+Label(frame_lists, text="Lista nauczycieli:").grid(row=0, column=2)
+listbox_teachers = Listbox(frame_lists, width=40)
+listbox_teachers.grid(row=1, column=2)
+Button(frame_lists, text="Dodaj nauczyciela", command=add_example_teacher).grid(row=2, column=2)
+Button(frame_lists, text="Usuń nauczyciela", command=delete_teacher).grid(row=3, column=2, pady=2)
 
-
-# RAMKA SZCZEGÓŁY OBIEKTU
-label_szczegoly_obiektu = Label(ramka_szczegoly_obiektow, text="Szczegóły szkoły:")
-label_szczegoly_obiektu.grid(row=0, column=0, sticky=W)
-
-label_name_szczegoly_obiektu = Label(ramka_szczegoly_obiektow, text="Nazwa:")
-label_name_szczegoly_obiektu.grid(row=1, column=0)
-
-label_name_szczegoly_obiektu_wartosc = Label(ramka_szczegoly_obiektow, text="....")
-label_name_szczegoly_obiektu_wartosc.grid(row=1, column=1)
-
-label_location_szczegoly_obiektu = Label(ramka_szczegoly_obiektow, text="Miejscowość:")
-label_location_szczegoly_obiektu.grid(row=1, column=2)
-
-label_location_szczegoly_obiektu_wartosc = Label(ramka_szczegoly_obiektow, text="....")
-label_location_szczegoly_obiektu_wartosc.grid(row=1, column=3)
-
-map_widget = tkintermapview.TkinterMapView(ramka_mapa, width=1024, height=400)
-map_widget.set_position(52.16, 22.29)  # Siedlce
+# MAPA
+map_widget = tkintermapview.TkinterMapView(frame_map, width=1100, height=400)
+map_widget.set_position(52.16, 22.29)
 map_widget.set_zoom(12)
-map_widget.grid(row=0, column=0, columnspan=8)
-
-
-
+map_widget.grid(row=0, column=0)
 
 root.mainloop()
